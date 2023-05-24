@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "jenkins": "^1.0.1",
+    "wget": "^0.0.1"
+  }
+}

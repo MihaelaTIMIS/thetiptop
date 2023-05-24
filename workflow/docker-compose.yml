@@ -1,0 +1,545 @@
+version: '3'
+
+networks:
+ private:
+ web:
+  external:
+   name: web
+
+services:
+ #-------------
+ #---Traefik---
+ #-------------
+ traefik:
+  image: traefik:v2.4.2
+  ports:
+   - 80:80
+   - 443:443
+  volumes:
+   - /var/run/docker.sock:/var/run/docker.sock:ro
+   - /docker/letsencrypt:/letsencrypt
+  networks:
+   - web
+  command:
+   - --log.level=DEBUG
+   - --api.insecure=true
+   - --providers.docker=true
+   - --providers.docker.exposedbydefault=true
+   - --entrypoints.web.address=:80
+   ####---- start decomment for prod -----  ####
+   - --entrypoints.websecure.address=:443
+   - --entrypoints.web.http.redirections.entryPoint.to=websecure
+   - --entrypoints.web.http.redirections.entryPoint.scheme=https
+   - --certificatesresolvers.myresolver.acme.httpchallenge=true
+   - --certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web
+   - --certificatesresolvers.myresolver.acme.email=projetthiptop@gmail.com
+   - --certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json
+  ####---- end decomment for prod -----  ####
+
+  labels:
+   - traefik.enable=true
+   - traefik.http.routers.traefik.rule=Host(`traefik.${HOST_URL}`)
+   - traefik.http.services.traefik.loadbalancer.server.port=8080
+   - traefik.http.routers.traefik.entrypoints=${TRAEFIK_ENTRYPOINTS}
+   - traefik.http.routers.traefik.tls=${TLS}
+   - traefik.http.routers.traefik.tls.certresolver=myresolver
+   - traefik.http.routers.traefik-https.tls=${TLS}
+  extra_hosts:
+   - "${HOST_URL}:${HOST_IP}"
+   - "traefik.${HOST_URL}:${HOST_IP}"
+   - "gogs.${HOST_URL}:${HOST_IP}"
+   - "jenkins.${HOST_URL}:${HOST_IP}"
+   - "nexus.${HOST_URL}:${HOST_IP}"
+   - "whoami.${HOST_URL}:${HOST_IP}"
+   - "cadvisor.${HOST_URL}:${HOST_IP}"
+   - "prometheus.${HOST_URL}:${HOST_IP}"
+   - "grafana.${HOST_URL}:${HOST_IP}"
+   - "preprod-admin.${HOST_URL}:${HOST_IP}"
+   - "phpadmin.${HOST_URL}:${HOST_IP}"
+   - "frontend.${HOST_URL}:${HOST_IP}"
+   - "prod-admin.${HOST_URL}:${HOST_IP}"
+   - "portainer.${HOST_URL}:${HOST_IP}"
+  restart: always
+
+ #----------
+ #---Gogs---
+ #----------
+ gogs-db:
+  image: postgres:13-alpine
+  volumes:
+   - ./data/gogs/postgres:/var/lib/postresql/data
+  networks:
+   - private
+  environment:
+   - POSTGRES_DB=gogs
+   - POSTGRES_USER=gogs
+   - POSTGRES_PASSWORD=gogs
+  restart: always
+
+
+ nexus:
+  container_name: nexus
+  image: sonatype/nexus3
+  restart: always
+  networks:
+   - web
+  volumes:
+   - /nexus-data:/nexus-data 
+  labels:
+   - traefik.http.services.nexus.loadbalancer.server.port=8081
+   - traefik.http.routers.nexus.rule=Host(`nexus.${HOST_URL}`)
+   - traefik.enable=true
+   - traefik.http.routers.nexus.entrypoints=${TRAEFIK_ENTRYPOINTS}
+   - traefik.http.routers.nexus.tls=${TLS}
+   - traefik.http.routers.nexus.tls.certresolver=myresolver
+   - traefik.http.routers.nexus.service=nexus
+   - traefik.http.routers.repo-nexus.rule=Host(`registry.${HOST_URL}`)
+   - traefik.http.routers.repo-nexus.entrypoints=${TRAEFIK_ENTRYPOINTS}
+   - traefik.http.services.repo-nexus.loadbalancer.server.port=8082
+   - traefik.http.routers.repo-nexus.tls=${TLS}
+   - traefik.http.routers.repo-nexus.tls.certresolver=myresolver
+   - traefik.http.routers.repo-nexus.service=repo-nexus
+
+  extra_hosts:
+   - "${HOST_URL}:${HOST_IP}"
+   - "traefik.${HOST_URL}:${HOST_IP}"
+   - "gogs.${HOST_URL}:${HOST_IP}"
+   - "jenkins.${HOST_URL}:${HOST_IP}"
+   - "nexus.${HOST_URL}:${HOST_IP}"
+   - "registry.${HOST_URL}:${HOST_IP}"
+   - "whoami.${HOST_URL}:${HOST_IP}"
+   - "cadvisor.${HOST_URL}:${HOST_IP}"
+   - "prometheus.${HOST_URL}:${HOST_IP}"
+   - "grafana.${HOST_URL}:${HOST_IP}"
+   - "backend.${HOST_URL}:${HOST_IP}"
+   - "preprod-admin.${HOST_URL}:${HOST_IP}"
+   - "phpadmin.${HOST_URL}:${HOST_IP}"
+   - "frontend.${HOST_URL}:${HOST_IP}"
+   - "prod-admin.${HOST_URL}:${HOST_IP}"
+
+ gogs:
+  image: gogs/gogs:0.12
+  ports: 
+   - 2222:2222
+  volumes:
+   - ./data/gogs/data:/data
+  networks:
+   - web 
+   - private
+  labels:
+   - traefik.enable=true
+   - traefik.http.routers.gogs.rule=Host(`gogs.${HOST_URL}`)
+   - traefik.http.services.gogs.loadbalancer.server.port=3000
+   - traefik.http.routers.gogs.entrypoints=${TRAEFIK_ENTRYPOINTS}
+   - traefik.http.routers.gogs.tls=${TLS}
+   - traefik.http.routers.gogs.tls.certresolver=myresolver
+  extra_hosts:
+   - "${HOST_URL}:${HOST_IP}"
+   - "traefik.${HOST_URL}:${HOST_IP}"
+   - "gogs.${HOST_URL}:${HOST_IP}"
+   - "jenkins.${HOST_URL}:${HOST_IP}"
+   - "nexus.${HOST_URL}:${HOST_IP}"
+   - "registry.${HOST_URL}:${HOST_IP}"
+   - "whoami.${HOST_URL}:${HOST_IP}"
+   - "cadvisor.${HOST_URL}:${HOST_IP}"
+   - "prometheus.${HOST_URL}:${HOST_IP}"
+   - "grafana.${HOST_URL}:${HOST_IP}"
+   - "preprod-admin.${HOST_URL}:${HOST_IP}"
+   - "phpadmin.${HOST_URL}:${HOST_IP}"
+   - "frontend.${HOST_URL}:${HOST_IP}"
+   - "prod-admin.${HOST_URL}:${HOST_IP}"
+   - "portainer.${HOST_URL}:${HOST_IP}"
+  restart: always
+
+
+ preprod-admin:
+  image: 154265/laravel:latest
+  container_name: preprod-admin
+  restart: unless-stopped
+  working_dir: /var/www/
+  volumes:
+   - /var/.env.test:/var/www/.env
+  networks:
+   - web
+   - private
+  labels:
+   - traefik.http.routers.preprod-admin.rule=Host(`preprod-admin.${HOST_URL}`)
+   - traefik.http.services.preprod-admin.loadbalancer.server.port=8000
+   - traefik.enable=true
+   - traefik.http.routers.preprod-admin.entrypoints=${TRAEFIK_ENTRYPOINTS}
+   - traefik.http.routers.preprod-admin.tls=${TLS}
+   - traefik.http.routers.preprod-admin.tls.certresolver=myresolver 
+  extra_hosts:
+   - "${HOST_URL}:${HOST_IP}"
+   - "traefik.${HOST_URL}:${HOST_IP}"
+   - "gogs.${HOST_URL}:${HOST_IP}"
+   - "jenkins.${HOST_URL}:${HOST_IP}"
+   - "nexus.${HOST_URL}:${HOST_IP}"
+   - "whoami.${HOST_URL}:${HOST_IP}"
+   - "cadvisor.${HOST_URL}:${HOST_IP}"
+   - "prometheus.${HOST_URL}:${HOST_IP}"
+   - "grafana.${HOST_URL}:${HOST_IP}"
+   - "preprod-admin.${HOST_URL}:${HOST_IP}"
+   - "phpadmin.${HOST_URL}:${HOST_IP}"
+   - "frontend.${HOST_URL}:${HOST_IP}"
+   - "prod-admin.${HOST_URL}:${HOST_IP}"
+   - "portainer.${HOST_URL}:${HOST_IP}"
+
+
+ prod-admin:
+  image: 154265/laravel:latest
+  container_name: prod-admin
+  restart: unless-stopped
+  working_dir: /var/www/
+  volumes:
+   - /var/.envtest:/var/www/.env
+  networks:
+   - web
+   - private
+  labels:
+   - traefik.http.routers.prod-admin.rule=Host(`prod-admin.${HOST_URL}`)
+   - traefik.http.services.prod-admin.loadbalancer.server.port=8000
+   - traefik.enable=true
+   - traefik.http.routers.prod-admin.entrypoints=${TRAEFIK_ENTRYPOINTS}
+   - traefik.http.routers.prod-admin.tls=${TLS}
+   - traefik.http.routers.prod-admin.tls.certresolver=myresolver
+  extra_hosts:
+   - "${HOST_URL}:${HOST_IP}"
+   - "traefik.${HOST_URL}:${HOST_IP}"
+   - "gogs.${HOST_URL}:${HOST_IP}"
+   - "jenkins.${HOST_URL}:${HOST_IP}"
+   - "nexus.${HOST_URL}:${HOST_IP}"
+   - "whoami.${HOST_URL}:${HOST_IP}"
+   - "cadvisor.${HOST_URL}:${HOST_IP}"
+   - "prometheus.${HOST_URL}:${HOST_IP}"
+   - "grafana.${HOST_URL}:${HOST_IP}"
+   - "preprod-admin.${HOST_URL}:${HOST_IP}"
+   - "prod-admin.${HOST_URL}:${HOST_IP}"
+   - "phpadmin.${HOST_URL}:${HOST_IP}"
+   - "frontend.${HOST_URL}:${HOST_IP}"
+   - "portainer.${HOST_URL}:${HOST_IP}"
+
+
+ frontend:
+  image: 154265/frontend:latest
+  container_name: thetiptop-frontent
+  networks:
+   - web
+   - private
+  working_dir: /usr/local/app
+  extra_hosts:
+   - "${HOST_URL}:${HOST_IP}"
+   - "traefik.${HOST_URL}:${HOST_IP}"
+   - "gogs.${HOST_URL}:${HOST_IP}"
+   - "jenkins.${HOST_URL}:${HOST_IP}"
+   - "nexus.${HOST_URL}:${HOST_IP}"
+   - "whoami.${HOST_URL}:${HOST_IP}"
+   - "cadvisor.${HOST_URL}:${HOST_IP}"
+   - "prometheus.${HOST_URL}:${HOST_IP}"
+   - "grafana.${HOST_URL}:${HOST_IP}"
+   - "preprod-admin.${HOST_URL}:${HOST_IP}"
+   - "phpadmin.${HOST_URL}:${HOST_IP}"
+   - "frontend.${HOST_URL}:${HOST_IP}"
+   - "prod-admin.${HOST_URL}:${HOST_IP}"
+  labels:
+   - traefik.http.routers.frontend.rule=Host(`frontend.${HOST_URL}`)
+   - traefik.http.services.frontend.loadbalancer.server.port=80
+   - traefik.enable=true
+   - traefik.http.routers.frontend.entrypoints=${TRAEFIK_ENTRYPOINTS}
+   - traefik.http.routers.frontend.tls=${TLS}
+   - traefik.http.routers.frontend.tls.certresolver=myresolver
+ 
+ frontend-prod:
+  image: 154265/frontend:latest
+  container_name: thetiptop-frontent-prod
+  networks:
+   - web
+   - private
+  working_dir: /usr/local/app
+  extra_hosts:
+   - "${HOST_URL}:${HOST_IP}"
+   - "traefik.${HOST_URL}:${HOST_IP}"
+   - "gogs.${HOST_URL}:${HOST_IP}"
+   - "jenkins.${HOST_URL}:${HOST_IP}"
+   - "nexus.${HOST_URL}:${HOST_IP}"
+   - "whoami.${HOST_URL}:${HOST_IP}"
+   - "cadvisor.${HOST_URL}:${HOST_IP}"
+   - "prometheus.${HOST_URL}:${HOST_IP}"
+   - "grafana.${HOST_URL}:${HOST_IP}"
+   - "preprod-admin.${HOST_URL}:${HOST_IP}"
+   - "phpadmin.${HOST_URL}:${HOST_IP}"
+   - "frontend.${HOST_URL}:${HOST_IP}"
+   - "prod-admin.${HOST_URL}:${HOST_IP}"
+  labels:
+   - traefik.http.routers.frontend-prod.rule=Host(`${HOST_URL}`)
+   - traefik.http.services.frontend-prod.loadbalancer.server.port=80
+   - traefik.enable=true
+   - traefik.http.routers.frontend-prod.entrypoints=${TRAEFIK_ENTRYPOINTS}
+   - traefik.http.routers.frontend-prod.tls=${TLS}
+   - traefik.http.routers.frontend-prod.tls.certresolver=myresolver
+
+ portainer:
+  image: portainer/portainer
+  container_name: thetiptop_portainer
+  command: -H unix:///var/run/docker.sock
+  restart: always
+  ports:
+   - "9000:9000"
+  volumes:
+   - /var/run/docker.sock:/var/run/docker.sock 
+  networks:
+   - web
+   - private
+  labels:
+   - traefik.http.routers.portainer.rule=Host(`portainer.${HOST_URL}`)
+   - traefik.http.services.portainer.loadbalancer.server.port=9000
+   - traefik.enable=true
+   - traefik.http.routers.portainer.entrypoints=${TRAEFIK_ENTRYPOINTS}
+   - traefik.http.routers.portainer.tls=${TLS}
+   - traefik.http.routers.portainer.tls.certresolver=myresolver
+  extra_hosts:
+   - "${HOST_URL}:${HOST_IP}"
+   - "traefik.${HOST_URL}:${HOST_IP}"
+   - "gogs.${HOST_URL}:${HOST_IP}"
+   - "jenkins.${HOST_URL}:${HOST_IP}"
+   - "nexus.${HOST_URL}:${HOST_IP}"
+   - "whoami.${HOST_URL}:${HOST_IP}"
+   - "cadvisor.${HOST_URL}:${HOST_IP}"
+   - "prometheus.${HOST_URL}:${HOST_IP}"
+   - "grafana.${HOST_URL}:${HOST_IP}"
+   - "preprod-admin.${HOST_URL}:${HOST_IP}"
+   - "phpadmin.${HOST_URL}:${HOST_IP}"
+   - "frontend.${HOST_URL}:${HOST_IP}"
+   - "prod-admin.${HOST_URL}:${HOST_IP}"
+   - "portainer.${HOST_URL}:${HOST_IP}"
+
+
+ db:
+  platform: linux/x86_64
+  image: mysql/mysql-server:8.0.23
+  container_name: thetiptop-db
+  restart: unless-stopped
+  environment:
+   MYSQL_DATABASE: "thetiptop"
+   MYSQL_RANDOM_ROOT_PASSWORD: 1
+   MYSQL_USER: "root"
+   MYSQL_PASSWORD: "root"
+   SERVICE_TAGS: dev
+   SERVICE_NAME: mysql
+  volumes:
+   - ./docker-compose/mysql:/docker-entrypoint-initdb.d
+  networks:
+   - web
+   - private
+
+ dbtest:
+  platform: linux/x86_64
+  image: mysql/mysql-server:8.0.23
+  container_name: thetiptop-dbtest
+  restart: unless-stopped
+  ports:
+   - 3307:3306
+  environment:
+   MYSQL_DATABASE: "thetiptoptest"
+   MYSQL_RANDOM_ROOT_PASSWORD: 1
+   MYSQL_USER: "root"
+   MYSQL_PASSWORD: "root"
+   SERVICE_TAGS: dev
+   SERVICE_NAME: mysql
+  volumes:
+   - ./docker-compose/mysqltest:/docker-entrypoint-initdb.d
+  networks:
+   - web
+   - private
+
+
+ phpmyadmin:
+  image: phpmyadmin/phpmyadmin
+  container_name: phpmyadmin
+  restart: unless-stopped
+  depends_on:
+   - db
+   - dbtest
+  networks:
+   - web
+   - private
+  labels:
+   - traefik.enable=true
+   - traefik.http.routers.phpadmin.rule=Host(`phpadmin.${HOST_URL}`)
+   - traefik.http.routers.phpadmin.entrypoints=${TRAEFIK_ENTRYPOINTS}
+   - traefik.http.routers.phpadmin.tls=${TLS}
+   - traefik.http.routers.phpadmin.tls.certresolver=myresolver
+  ports:
+   - '8080:80'
+  extra_hosts:
+   - "${HOST_URL}:${HOST_IP}"
+   - "traefik.${HOST_URL}:${HOST_IP}"
+   - "gogs.${HOST_URL}:${HOST_IP}"
+   - "jenkins.${HOST_URL}:${HOST_IP}"
+   - "nexus.${HOST_URL}:${HOST_IP}"
+   - "whoami.${HOST_URL}:${HOST_IP}"
+   - "cadvisor.${HOST_URL}:${HOST_IP}"
+   - "prometheus.${HOST_URL}:${HOST_IP}"
+   - "grafana.${HOST_URL}:${HOST_IP}"
+   - "phpadmin.${HOST_URL}:${HOST_IP}"
+   - "preprod-admin.${HOST_URL}:${HOST_IP}"
+   - "frontend.${HOST_URL}:${HOST_IP}"
+   - "prod-admin.${HOST_URL}:${HOST_IP}"
+   - "portainer.${HOST_URL}:${HOST_IP}"
+
+ whoami:
+  image: "traefik/whoami"
+  container_name: "simple-service"
+  labels:
+   - traefik.enable=true
+   - traefik.http.routers.whoami.rule=Host(`whoami.${HOST_URL}`)
+   - traefik.http.routers.whoami.entrypoints=${TRAEFIK_ENTRYPOINTS}
+   - traefik.http.routers.whoami.tls=${TLS}
+   - traefik.http.routers.whoami.tls.certresolver=myresolver
+
+ #-------------
+ #---Jenkins---
+ #-------------
+ 
+ jenkins:
+   build: images/jenkins
+   volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+    - ./data/jenkins:/var/jenkins_home
+   networks:
+    - web
+   labels:
+    - traefik.enable=true
+    - traefik.http.routers.jenkins.rule=Host(`jenkins.${HOST_URL}`)
+    - traefik.http.services.jenkins.loadbalancer.server.port=8080
+    - traefik.http.routers.jenkins.entrypoints=${TRAEFIK_ENTRYPOINTS}
+    - traefik.http.routers.jenkins.tls=${TLS}
+    - traefik.http.routers.jenkins.tls.certresolver=myresolver
+   extra_hosts:
+    - "${HOST_URL}:${HOST_IP}"
+    - "traefik.${HOST_URL}:${HOST_IP}"
+    - "gogs.${HOST_URL}:${HOST_IP}"
+    - "jenkins.${HOST_URL}:${HOST_IP}"
+    - "nexus.${HOST_URL}:${HOST_IP}"
+    - "registry.${HOST_URL}:${HOST_IP}"
+    - "whoami.${HOST_URL}:${HOST_IP}"
+    - "cadvisor.${HOST_URL}:${HOST_IP}"
+    - "prometheus.${HOST_URL}:${HOST_IP}"
+    - "grafana.${HOST_URL}:${HOST_IP}"
+    - "preprod-admin.${HOST_URL}:${HOST_IP}"
+    - "phpadmin.${HOST_URL}:${HOST_IP}"
+    - "frontend.${HOST_URL}:${HOST_IP}"
+    - "prod-admin.${HOST_URL}:${HOST_IP}"
+    - "portainer.${HOST_URL}:${HOST_IP}"
+   restart: always
+
+
+ cadvisor:
+  image: google/cadvisor
+  container_name: cadvisor
+  volumes:
+   - /:/rootfs:ro
+   - /var/run:/var/run:rw
+   - /sys:/sys:ro
+   - /var/lib/docker/:/var/lib/docker:ro
+  networks:
+   - web
+  labels:
+   - traefik.enable=true
+   - traefik.http.routers.cadvisor.rule=Host(`cadvisor.${HOST_URL}`)
+   - traefik.http.services.cadvisor.loadbalancer.server.port=8080
+   - traefik.http.routers.cadvisor.entrypoints=${TRAEFIK_ENTRYPOINTS}
+   - traefik.http.routers.cadvisor.tls=${TLS}
+   - traefik.http.routers.cadvisor.tls.certresolver=myresolver
+  extra_hosts:
+   - "${HOST_URL}:${HOST_IP}"
+   - "traefik.${HOST_URL}:${HOST_IP}"
+   - "gogs.${HOST_URL}:${HOST_IP}"
+   - "jenkins.${HOST_URL}:${HOST_IP}"
+   - "nexus.${HOST_URL}:${HOST_IP}"
+   - "registry.${HOST_URL}:${HOST_IP}"
+   - "whoami.${HOST_URL}:${HOST_IP}"
+   - "cadvisor.${HOST_URL}:${HOST_IP}"
+   - "prometheus.${HOST_URL}:${HOST_IP}"
+   - "grafana.${HOST_URL}:${HOST_IP}"
+   - "preprod-admin.${HOST_URL}:${HOST_IP}"
+   - "phpadmin.${HOST_URL}:${HOST_IP}"
+   - "frontend.${HOST_URL}:${HOST_IP}"
+   - "prod-admin.${HOST_URL}:${HOST_IP}"
+   - "portainer.${HOST_URL}:${HOST_IP}"
+  restart: always
+
+ prometheus:
+  image: prom/prometheus:latest
+  container_name: prometheus
+  volumes:
+   - ./prometheus/:/etc/prometheus/
+   - prometheus-data:/prometheus
+  command:
+   - '--config.file=/etc/prometheus/prometheus.yml'
+   - '--storage.tsdb.path=/prometheus'
+   - '--web.console.libraries=/etc/prometheus/console_libraries'
+   - '--web.console.templates=/etc/prometheus/consoles'
+   - '--storage.tsdb.retention=200h'
+  networks:
+   - web
+  labels:
+    - traefik.enable=true
+    - traefik.http.routers.prometheus.rule=Host(`prometheus.${HOST_URL}`)
+    - traefik.http.services.prometheus.loadbalancer.server.port=9090
+    - traefik.http.routers.prometheus.entrypoints=${TRAEFIK_ENTRYPOINTS}
+    - traefik.http.routers.prometheus.tls=${TLS}
+    - traefik.http.routers.prometheus.tls.certresolver=myresolver
+  extra_hosts:
+   - "${HOST_URL}:${HOST_IP}"
+   - "traefik.${HOST_URL}:${HOST_IP}"
+   - "gogs.${HOST_URL}:${HOST_IP}"
+   - "jenkins.${HOST_URL}:${HOST_IP}"
+   - "nexus.${HOST_URL}:${HOST_IP}"
+   - "registry.${HOST_URL}:${HOST_IP}"
+   - "whoami.${HOST_URL}:${HOST_IP}"
+   - "cadvisor.${HOST_URL}:${HOST_IP}"
+   - "prometheus.${HOST_URL}:${HOST_IP}"
+   - "grafana.${HOST_URL}:${HOST_IP}"
+   - "preprod-admin.${HOST_URL}:${HOST_IP}"
+   - "phpadmin.${HOST_URL}:${HOST_IP}"
+   - "frontend.${HOST_URL}:${HOST_IP}"
+   - "prod-admin.${HOST_URL}:${HOST_IP}"
+   - "portainer.${HOST_URL}:${HOST_IP}"
+  restart: always
+
+ grafana:
+  image: grafana/grafana:latest
+  container_name: grafana
+  volumes:
+   - grafana-data:/var/lib/grafana
+  networks:
+   - web
+  labels:
+   - traefik.enable=true
+   - traefik.http.routers.grafana.rule=Host(`grafana.${HOST_URL}`)
+   - traefik.http.services.grafana.loadbalancer.server.port=3000
+   - traefik.http.routers.grafana.entrypoints=${TRAEFIK_ENTRYPOINTS}
+   - traefik.http.routers.grafana.tls=${TLS}
+   - traefik.http.routers.grafana.tls.certresolver=myresolver
+  extra_hosts:
+   - "${HOST_URL}:${HOST_IP}"
+   - "traefik.${HOST_URL}:${HOST_IP}"
+   - "gogs.${HOST_URL}:${HOST_IP}"
+   - "jenkins.${HOST_URL}:${HOST_IP}"
+   - "nexus.${HOST_URL}:${HOST_IP}"
+   - "registry.${HOST_URL}:${HOST_IP}"
+   - "whoami.${HOST_URL}:${HOST_IP}"
+   - "cadvisor.${HOST_URL}:${HOST_IP}"
+   - "prometheus.${HOST_URL}:${HOST_IP}"
+   - "grafana.${HOST_URL}:${HOST_IP}"
+   - "preprod-admin.${HOST_URL}:${HOST_IP}"
+   - "phpadmin.${HOST_URL}:${HOST_IP}"
+   - "frontend.${HOST_URL}:${HOST_IP}"
+   - "prod-admin.${HOST_URL}:${HOST_IP}"
+   - "portainer.${HOST_URL}:${HOST_IP}"
+  restart: always
+
+volumes:
+  prometheus-data: {}
+  grafana-data: {}
